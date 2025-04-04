@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  vllm:
+    image: vllm-env
+    container_name: vllm-chat-api
+    restart: always
+    shm_size: "16g"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../model/output/:/model/
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    command: >
+      python -m vllm.entrypoints.openai.api_server
+      --model /model/gemma-2-9b_sft_1e-5_instruct/checkpoint-1875
+      --port 8000 
+      --max-model-len 2048
+      --tensor-parallel-size 1 
+      --gpu-memory-utilization 0.9
+      --max-num-seqs 8
+      --kv-cache-dtype fp8
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - vllm-net
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - webui-data:/app/backend/data
+    environment:
+      - OPENAI_API_BASE_URL=http://vllm-chat-api:8000/v1
+      - WEBUI_SECRET_KEY=EMPTY
+      - OLLAMA_API_BASE_URL=""
+      - USE_CUDA_DOCKER=true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    depends_on:
+      - vllm
+    networks:
+      - vllm-net
+
+networks:
+  vllm-net:
+
+volumes:
+  webui-data:
